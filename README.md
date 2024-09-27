@@ -1,6 +1,14 @@
-# StyleTTS 2: Towards Human-Level Text-to-Speech through Style Diffusion and Adversarial Training with Large Speech Language Models
+# StyleTTS 2 API
 
-### Yinghao Aaron Li, Cong Han, Vinay S. Raghavan, Gavin Mischler, Nima Mesgarani
+> [!CAUTION]
+> The Streaming API is not fully implemented yet.
+
+[Original Repo](https://github.com/yl4579/StyleTTS2) - [CLI Tool](https://github.com/fakerybakery/styletTS2-cli) - **Streaming API**
+
+(GPL licensed due to Phonemizer. Should I switch to OpenPhonemizer and make it MIT-licensed?)
+
+
+StyleTTS 2 is by Yinghao Aaron Li, Cong Han, Vinay S. Raghavan, Gavin Mischler, Nima Mesgarani. I am not affiliated with them.
 
 > In this paper, we present StyleTTS 2, a text-to-speech (TTS) model that leverages style diffusion and adversarial training with large speech language models (SLMs) to achieve human-level TTS synthesis. StyleTTS 2 differs from its predecessor by modeling styles as a latent random variable through diffusion models to generate the most suitable style for the text without requiring reference speech, achieving efficient latent diffusion while benefiting from the diverse speech synthesis offered by diffusion models. Furthermore, we employ large pre-trained SLMs, such as WavLM, as discriminators with our novel differentiable duration modeling for end-to-end training, resulting in improved speech naturalness. StyleTTS 2 surpasses human recordings on the single-speaker LJSpeech dataset and matches it on the multispeaker VCTK dataset as judged by native English speakers. Moreover, when trained on the LibriTTS dataset, our model outperforms previous publicly available models for zero-shot speaker adaptation. This work achieves the first human-level TTS synthesis on both single and multispeaker datasets, showcasing the potential of style diffusion and adversarial training with large SLMs.
 
@@ -17,7 +25,11 @@ Online demo: [Hugging Face](https://huggingface.co/spaces/styletts2/styletts2) (
 - [x] Test training code for multi-speaker models (VCTK and LibriTTS)
 - [x] Finish demo code for multispeaker model and upload pre-trained models
 - [x] Add a finetuning script for new speakers with base pre-trained multispeaker models
+- [x] REST API
+- [x] Importable inference script (PR #78)
 - [ ] Fix DDP (accelerator) for `train_second.py` **(I have tried everything I could to fix this but had no success, so if you are willing to help, please see [#7](https://github.com/yl4579/StyleTTS2/issues/7))**
+- [ ] Pip package
+- [ ] Demo of audio streaming
 
 ## Pre-requisites
 1. Python >= 3.7
@@ -41,6 +53,76 @@ sudo apt-get install espeak-ng
 ```
 4. Download and extract the [LJSpeech dataset](https://keithito.com/LJ-Speech-Dataset/), unzip to the data folder and upsample the data to 24 kHz. The text aligner and pitch extractor are pre-trained on 24 kHz data, but you can easily change the preprocessing and re-train them using your own preprocessing. 
 For LibriTTS, you will need to combine train-clean-360 with train-clean-100 and rename the folder train-clean-460 (see [val_list_libritts.txt](https://github.com/yl4579/StyleTTS/blob/main/Data/val_list_libritts.txt) as an example).
+
+## Streaming API
+
+You can use StyleTTS 2 in your projects by launching the HTTP API with streaming support. Synthesize text from your frontend apps, etc by making HTTP calls to the API server. The server uses Flask. It has not been extensively tested and should not be used for production purposes.
+
+API documentation may be found in the [`API_DOCS.md`](API_DOCS.md) file.
+
+Launch server:
+
+```
+python api.py
+```
+
+## Python API
+
+You can now use StyleTTS 2 directly in your programs! A `pip`-compatible package is coming soon.
+
+Multi-Speaker Inference:
+
+```python
+from scipy.io.wavfile import write
+import msinference
+text = 'Hello world!'
+voice = msinference.compute_style('voice.wav')
+wav = msinference.inference(text, voice, alpha=0.3, beta=0.7, diffusion_steps=7, embedding_scale=1)
+write('result.wav', 24000, wav)
+```
+
+LJSpeech Inference:
+
+```python
+from scipy.io.wavfile import write
+import ljinference
+text = 'Hello world!'
+noise = torch.randn(1,1,256).to('cuda' if torch.cuda.is_available() else 'cpu')
+wav = ljinference.inference(text, noise, diffusion_steps=7, embedding_scale=1)
+write('result.wav', 24000, wav)
+```
+
+For longer text, you can [help implement #54](https://github.com/yl4579/StyleTTS2/issues/54) or use Tortoise TTS for splitting:
+
+```python
+from tortoise.utils.text import split_and_recombine_text
+import numpy as np
+from scipy.io.wavfile import write
+import msinference
+text = 'Long text here...'
+texts = split_and_recombine_text(text)
+audios = []
+voice = msinference.compute_style('voice.wav')
+for t in texts:
+    audios.append(msinference.inference(t, voice, alpha=0.3, beta=0.7, diffusion_steps=7, embedding_scale=1))
+write('result.wav', 24000, np.concatenate(audios))
+```
+
+## GUI
+
+You can run inference (finetuning coming soon) on a GUI based on the [online demo](https://huggingface.co/spaces/styletts2/styletts2) powered by Gradio.
+
+```bash
+python app.py
+```
+
+**NOTE: Only the multi-speaker tab supports long-text currently.**
+
+Note: the online demo will be updated more frequently as changes are pushed directly to it (rather than through PRs). If you would like to use the latest (potentially unstable) version, use Docker:
+
+```bash
+docker run -it -p 7860:7860 --platform=linux/amd64 --gpus all registry.hf.space/styletts2-styletts2:latest python app.py
+```
 
 ## Training
 First stage training:
@@ -103,6 +185,9 @@ Please refer to [Inference_LJSpeech.ipynb](https://github.com/yl4579/StyleTTS2/b
 
   [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yl4579/StyleTTS2/blob/main/Colab/StyleTTS2_Demo_LibriTTS.ipynb)
 
+
+You can import StyleTTS 2 and run it in your own code. However, the inference depends on a GPL-licensed package, so it is not included directly in this repository. A [GPL-licensed fork](https://github.com/NeuralVox/StyleTTS2) has an importable script, as well as an experimental streaming API, etc. A [fully MIT-licensed package](https://pypi.org/project/styletts2/) that uses gruut (albeit lower quality due to mismatch between phonemizer and gruut) is also available.  
+
 ***Before using these pre-trained models, you agree to inform the listeners that the speech samples are synthesized by the pre-trained models, unless you have the permission to use the voice you synthesize. That is, you agree to only use voices whose speakers grant the permission to have their voice cloned, either directly or by license before making synthesized voices public, or you have to publicly announce that these voices are synthesized if you do not have the permission to use these voices.*** 
 
 ### Common Issues
@@ -114,3 +199,42 @@ Please refer to [Inference_LJSpeech.ipynb](https://github.com/yl4579/StyleTTS2/b
 - [jik876/hifi-gan](https://github.com/jik876/hifi-gan)
 - [rishikksh20/iSTFTNet-pytorch](https://github.com/rishikksh20/iSTFTNet-pytorch)
 - [nii-yamagishilab/project-NN-Pytorch-scripts/project/01-nsf](https://github.com/nii-yamagishilab/project-NN-Pytorch-scripts/tree/master/project/01-nsf)
+
+## License
+
+**NOTE: By contributing to this software you agree that the license may be changed in the future once I find a phonemizer replacement.**
+
+This package depends on `phonemizer`, which is GPL licensed. [Check out the original repository for a MIT-licensed version w/o the API!](https://github.com/yl4579/StyleTTS2). I'm working on a permissively licensed Phonemizer - coming soon!
+
+NOTE: By contributing to this project you agree that the authors may change the license in the future
+
+Copyright (C) 2023 Aaron (Yinghao) Li (under the MIT license). 
+Modifications copyright (C) 2023-2024 mrfakename.
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+**This software was previously licensed under the MIT license:**
+
+MIT License
+
+Copyright (c) 2023 Aaron (Yinghao) Li
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
